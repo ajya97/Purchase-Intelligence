@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}{{ label }} | Purchase Intelligence{% endblock %}
+
+{% block content %}
+{% set pages = values.Administrative + values.Informational + values.ProductRelated %}
+{% set seconds = values.Administrative_Duration + values.Informational_Duration + values.ProductRelated_Duration %}
+{% set pct = (probability * 100) %}
+
+<section class="container result-page" aria-labelledby="result-page-title">
+  <div class="section-head">
+    <h1 class="h2" id="result-page-title">Prediction result</h1>
+    <p>Based on the session you described.</p>
+  </div>
+
+  <div class="card result result-static">
+    <div class="verdict" data-tone="{{ 'likely' if prediction else 'unlikely' }}">
+      <span class="verdict-icon" aria-hidden="true">
+        <svg class="v-likely"><use href="#i-check"/></svg>
+        <svg class="v-unlikely"><use href="#i-x"/></svg>
+      </span>
+      <div>
+        <p class="verdict-label">{{ label }}</p>
+        <p class="verdict-note">
+          The model scores this session at {{ '%.0f'|format(pct) }}%, {{ 'above' if prediction else 'at or below' }} the {{ '%.0f'|format(threshold * 100) }}% decision threshold.
+        </p>
+      </div>
+    </div>
+
+    <div class="prob">
+      <div class="prob-head"><span>Purchase probability</span><strong>{{ '%.1f'|format(pct) }}%</strong></div>
+      <div class="meter" role="meter" aria-label="Purchase probability" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ '%.1f'|format(pct) }}">
+        <span class="meter-fill" style="width: {{ '%.1f'|format(pct) }}%"></span>
+        <span class="meter-threshold" aria-hidden="true"></span>
+      </div>
+      <div class="meter-scale" aria-hidden="true"><span>0%</span><span>50% threshold</span><span>100%</span></div>
+    </div>
+
+    {% if warnings %}
+      <ul class="notes">
+        {% for w in warnings %}<li>{{ w }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+
+    <dl class="metrics">
+      <div><dt>Pages viewed</dt><dd>{{ pages }}</dd></div>
+      <div><dt>Time on site</dt><dd>{{ '%.0f'|format(seconds) }} sec</dd></div>
+      <div><dt>Page value</dt><dd>{{ '%.2f'|format(values.PageValues) }}</dd></div>
+      <div><dt>Bounce rate</dt><dd>{{ '%.1f'|format(values.BounceRates * 100) }}%</dd></div>
+      <div><dt>Exit rate</dt><dd>{{ '%.1f'|format(values.ExitRates * 100) }}%</dd></div>
+      <div><dt>Visitor type</dt><dd>{{ values.VisitorType|replace('_', ' ') }}</dd></div>
+    </dl>
+
+    <div class="form-actions">
+      <a class="btn btn-primary" href="{{ url_for('main.home') }}#predictor">Predict another session</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

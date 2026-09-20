@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+
+{# ------------------------------------------------------------------ field macros #}
+{% macro field(f, values, errors) %}
+  {% set err = errors.get(f.name) %}
+  {% set val = values.get(f.name, f.default) %}
+  {% set kind = f.kind %}
+
+  {% if kind == 'bool' %}
+    <div class="field field-switch{% if err %} has-error{% endif %}" data-field="{{ f.name }}">
+      <label class="switch" for="f-{{ f.name }}">
+        <input class="switch-input" type="checkbox" role="switch" id="f-{{ f.name }}" name="{{ f.name }}" value="true"
+               data-kind="bool" aria-describedby="help-{{ f.name }}"{% if val in (true, 'true') %} checked{% endif %}>
+        <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+        <span class="switch-text">
+          <span class="switch-label">{{ f.label }}</span>
+          <span class="help" id="help-{{ f.name }}">{{ f.help }}</span>
+        </span>
+      </label>
+      <p class="error" id="err-{{ f.name }}" aria-live="polite"{% if not err %} hidden{% endif %}>{{ err }}</p>
+    </div>
+
+  {% elif kind in ('rate', 'special') %}
+    {% set top = f.slider_max if f.slider_max is defined else f.max %}
+    <div class="field field-range{% if err %} has-error{% endif %}" data-field="{{ f.name }}">
+      <div class="label-row">
+        <label for="f-{{ f.name }}">{{ f.label }}</label>
+        <output class="readout" for="f-{{ f.name }}" data-format="{{ 'percent' if kind == 'rate' else 'plain' }}">
+          {%- if kind == 'rate' %}{{ '%.1f'|format(val|float * 100) }}%{% else %}{{ '%.1f'|format(val|float) }}{% endif -%}
+        </output>
+      </div>
+      <input class="range" type="range" id="f-{{ f.name }}" name="{{ f.name }}" min="{{ f.min }}" max="{{ top }}" step="{{ f.step }}"
+             value="{{ val }}" data-kind="{{ kind }}" data-hard-max="{{ f.max }}" aria-describedby="help-{{ f.name }} err-{{ f.name }}"{% if err %} aria-invalid="true"{% endif %}>
+      <div class="range-scale" aria-hidden="true">
+        <span>{% if kind == 'rate' %}0%{% else %}0{% endif %}</span>
+        <span>{% if kind == 'rate' %}{{ '%g'|format(top * 100) }}%{% else %}1{% endif %}</span>
+      </div>
+      <p class="error" id="err-{{ f.name }}" aria-live="polite"{% if not err %} hidden{% endif %}>{{ err }}</p>
+      <p class="help" id="help-{{ f.name }}">{{ f.help }}</p>
+    </div>
+
+  {% elif kind == 'choice' %}
+    <div class="field{% if err %} has-error{% endif %}" data-field="{{ f.name }}">
+      <label for="f-{{ f.name }}">{{ f.label }}</label>
+      <div class="control select-wrap">
+        <select id="f-{{ f.name }}" name="{{ f.name }}" required data-kind="choice" data-numeric="{{ 'true' if f.numeric else 'false' }}"
+                aria-describedby="help-{{ f.name }} err-{{ f.name }}"{% if err %} aria-invalid="true"{% endif %}>
+          {% for o in f.options %}
+            <option value="{{ o.value }}"{% if val|string == o.value|string %} selected{% endif %}>{{ o.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <p class="error" id="err-{{ f.name }}" aria-live="polite"{% if not err %} hidden{% endif %}>{{ err }}</p>
+      <p class="help" id="help-{{ f.name }}">{{ f.help }}</p>
+    </div>
+
+  {% else %}
+    <div class="field{% if err %} has-error{% endif %}" data-field="{{ f.name }}">
+      <label for="f-{{ f.name }}">{{ f.label }}</label>
+      <div class="control affix">
+        <input id="f-{{ f.name }}" name="{{ f.name }}" type="number" inputmode="{{ 'numeric' if kind == 'int' else 'decimal' }}"
+               min="{{ f.min }}" max="{{ f.max }}" step="{{ f.step }}" value="{{ val }}" required
+               data-kind="{{ kind }}" aria-describedby="help-{{ f.name }} err-{{ f.name }}"{% if err %} aria-invalid="true"{% endif %}>
+        {% if f.unit %}<span class="affix-unit" aria-hidden="true">{{ f.unit }}</span>{% endif %}
+      </div>
+      <p class="error" id="err-{{ f.name }}" aria-live="polite"{% if not err %} hidden{% endif %}>{{ err }}</p>
+      <p class="help" id="help-{{ f.name }}">{{ f.help }}</p>
+    </div>
+  {% endif %}
+{% endmacro %}
+
+{% block content %}
+
+{# ------------------------------------------------------------------ hero #}
+<section class="hero container" id="top" aria-labelledby="hero-title">
+  <div class="hero-copy">
+    <h1 id="hero-title">Predict customer purchase intent before the checkout.</h1>
+    <p class="lede">Analyze browsing behavior and session activity to estimate the likelihood of a customer completing a purchase.</p>
+    <div class="hero-actions">
+      <a class="btn btn-primary" href="#predictor">Open the predictor</a>
+      <a class="btn btn-ghost" href="#model">See how it works</a>
+    </div>
+    <dl class="hero-facts">
+      <div><dt>Trained on</dt><dd>{{ '{:,}'.format(facts.sessions) }} shopping sessions</dd></div>
+      <div><dt>Session signals</dt><dd>{{ facts.inputs }} per prediction</dd></div>
+      <div><dt>API</dt><dd><code>POST /api/predict</code></dd></div>
+    </dl>
+  </div>
+
+  {# One illustrative session: each column is a page, height is time on the page. Not model output. #}
+  {% set pages = [('a',30),('a',16),('i',12),('p',22),('p',38),('p',30),('p',56),('p',44),('p',72),('p',40),('p',60),('p',84),('p',50)] %}
+  <figure class="hero-visual">
+    <figcaption class="visual-title">
+      <span>An example session</span>
+      <span class="muted">Each column is a page. Height is time spent on it.</span>
+    </figcaption>
+    <div class="session-plot" role="img" aria-label="Illustrative chart of one browsing session: thirteen pages in order, mostly product pages, with time on page increasing before an undecided checkout.">
+      {% for kind, h in pages %}
+        <span class="col col-{{ kind }}" style="--h: {{ h }}%; --i: {{ loop.index0 }}"></span>
+      {% endfor %}
+      <span class="col col-end" style="--h: 92%; --i: {{ pages|length }}"><span>?</span></span>
+    </div>
+    <ul class="key" aria-label="Page types">
+      <li><span class="swatch swatch-a"></span>Administrative</li>
+      <li><span class="swatch swatch-i"></span>Informational</li>
+      <li><span class="swatch swatch-p"></span>Product related</li>
+      <li><span class="swatch swatch-end"></span>Checkout</li>
+    </ul>
+    <p class="visual-note">Illustration only. It is not a model result.</p>
+  </figure>
+</section>
+
+{# ------------------------------------------------------------------ predictor #}
+<section class="predictor container" id="predictor" aria-labelledby="predictor-title">
+  <div class="section-head">
+    <h2 id="predictor-title">Session predictor</h2>
+    <p>Describe a visit and the model estimates how likely it is to end in a purchase.</p>
+  </div>
+
+  <div class="presets" role="group" aria-label="Start from an example session">
+    <span class="presets-label">Start from an example</span>
+    {% for p in presets %}
+      <button class="chip" type="button" data-preset="{{ p.id }}">{{ p.label }}</button>
+    {% endfor %}
+  </div>
+
+  <script type="application/json" id="presets-data">{{ presets|tojson }}</script>
+
+  <div class="predictor-grid">
+    <form class="predict-form" id="predict-form" method="post" action="{{ url_for('main.predict') }}" novalidate>
+      <div class="banner banner-error" id="form-banner" role="alert"{% if not error %} hidden{% endif %}>
+        <svg aria-hidden="true"><use href="#i-alert"/></svg>
+        <p id="form-banner-text">{{ error }}</p>
+      </div>
+
+      {% for g in groups %}
+        <div class="card group" role="group" aria-labelledby="g-{{ g.id }}">
+          <div class="group-head">
+            <span class="group-icon"><svg aria-hidden="true"><use href="#i-{{ g.icon }}"/></svg></span>
+            <div>
+              <h3 id="g-{{ g.id }}">{{ g.title }}</h3>
+              <p>{{ g.description }}</p>
+            </div>
+          </div>
+          <div class="fields">
+            {% for f in g.fields %}{{ field(f, values, errors) }}{% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+
+      <div class="form-actions">
+        <button class="btn btn-primary btn-lg" type="submit" id="predict-btn">
+          <span class="btn-spinner" aria-hidden="true"></span>
+          <span class="btn-label">Predict purchase intent</span>
+        </button>
+        <button class="btn btn-ghost" type="button" id="reset-btn">
+          <svg aria-hidden="true"><use href="#i-reset"/></svg>
+          Reset
+        </button>
+      </div>
+    </form>
+
+    <aside class="side" aria-label="Session summary and prediction">
+      <section class="card trace" aria-labelledby="trace-title">
+        <h3 id="trace-title">Session mix</h3>
+        <p class="muted small">Updates as you edit the inputs.</p>
+
+        <div class="trace-block">
+          <h4>Pages viewed</h4>
+          <div class="stack" id="stack-pages" role="img" aria-label="Pages viewed by type"></div>
+          <ul class="legend" id="legend-pages"></ul>
+        </div>
+        <div class="trace-block">
+          <h4>Time spent</h4>
+          <div class="stack" id="stack-time" role="img" aria-label="Time spent by page type"></div>
+          <ul class="legend" id="legend-time"></ul>
+        </div>
+        <p class="trace-empty" id="trace-empty" hidden>Add page activity to see how the session splits.</p>
+      </section>
+
+      <section class="card result" id="result" tabindex="-1" aria-labelledby="result-title" data-state="idle">
+        <h3 id="result-title">Prediction</h3>
+
+        <div data-view="idle">
+          <p class="muted">Choose <strong>Predict purchase intent</strong> and the result appears here.</p>
+        </div>
+
+        <div data-view="loading" hidden>
+          <ol class="steps" id="loading-steps" aria-label="Prediction progress">
+            <li data-step="0">Analyzing session</li>
+            <li data-step="1">Processing behavior</li>
+            <li data-step="2">Generating prediction</li>
+          </ol>
+          <div class="bar-indeterminate" aria-hidden="true"><span></span></div>
+        </div>
+
+        <div data-view="result" hidden>
+          <div class="verdict" id="verdict" data-tone="likely">
+            <span class="verdict-icon" aria-hidden="true">
+              <svg class="v-likely"><use href="#i-check"/></svg>
+              <svg class="v-unlikely"><use href="#i-x"/></svg>
+            </span>
+            <div>
+              <p class="verdict-label" id="verdict-label">Purchase likely</p>
+              <p class="verdict-note" id="verdict-note"></p>
+            </div>
+          </div>
+
+          <div class="prob" id="prob-block">
+            <div class="prob-head">
+              <span>Purchase probability</span>
+              <strong id="prob-value">0%</strong>
+            </div>
+            <div class="meter" id="meter" role="meter" aria-label="Purchase probability" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <span class="meter-fill" id="meter-fill"></span>
+              <span class="meter-threshold" aria-hidden="true"></span>
+            </div>
+            <div class="meter-scale" aria-hidden="true"><span>0%</span><span>50% threshold</span><span>100%</span></div>
+          </div>
+
+          <ul class="notes" id="result-warnings" hidden></ul>
+
+          <dl class="metrics" id="result-metrics"></dl>
+
+          <details class="payload">
+            <summary>Request and response</summary>
+            <pre><code id="payload-json"></code></pre>
+            <button class="btn btn-ghost btn-sm" type="button" id="copy-payload">
+              <svg aria-hidden="true"><use href="#i-copy"/></svg>
+              Copy JSON
+            </button>
+          </details>
+        </div>
+
+        <div data-view="error" hidden>
+          <div class="banner banner-error">
+            <svg aria-hidden="true"><use href="#i-alert"/></svg>
+            <div>
+              <p class="banner-title" id="error-title">Couldn't get a prediction</p>
+              <p id="error-text"></p>
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-sm" type="button" id="retry-btn">Try again</button>
+        </div>
+      </section>
+    </aside>
+  </div>
+</section>
+
+{# ------------------------------------------------------------------ about the model #}
+<section class="model container" id="model" aria-labelledby="model-title">
+  <div class="section-head">
+    <h2 id="model-title">About the model</h2>
+    <p>What it was trained on, how well it does, and where to be careful.</p>
+  </div>
+
+  <div class="model-grid">
+    <div class="prose reveal">
+      <p>Every prediction starts from {{ facts.inputs }} signals about a single visit: how many pages of each type were viewed, how long the visitor stayed on them, analytics measures such as bounce and exit rate, and context like visitor type and traffic source.</p>
+      <p>A small neural network turns those signals into a probability that the session ends in a purchase. The page labels the session <em>Purchase likely</em> when that probability is above 50%.</p>
+      <h3>Read the score with care</h3>
+      <p>Only {{ facts.purchase_share }}% of the training sessions ended in a purchase, so a model that always answered "no purchase" would already be right {{ facts.baseline }}% of the time. Precision and recall say more than accuracy here: on sessions it had never seen, the model found about {{ facts.recall|round|int }} in 100 real purchases and was right about {{ facts.precision|round|int }} in 100 times it predicted one.</p>
+      <p>The probability is the network's raw output and has not been calibrated. Operating system, browser, region and traffic type are anonymized codes in the dataset, so the form shows them as numbers rather than names. Inputs above anything in the training data are flagged in the result.</p>
+    </div>
+
+    <div class="model-side reveal">
+      <div class="card spec">
+        <h3>Model card</h3>
+        <dl>
+          <div><dt>Data</dt><dd>{{ '{:,}'.format(facts.sessions) }} sessions, {{ facts.purchase_share }}% ended in a purchase</dd></div>
+          <div><dt>Inputs</dt><dd>{{ facts.inputs }} session signals (the month is not used)</dd></div>
+          <div><dt>Network</dt><dd>Two hidden layers (16 and 8 units), {{ facts.parameters }} parameters</dd></div>
+          <div><dt>Evaluation</dt><dd>{{ '{:,}'.format(facts.test_sessions) }} held-out sessions (20% split)</dd></div>
+        </dl>
+        <div class="score-row">
+          <div><strong>{{ facts.accuracy }}%</strong><span>Accuracy</span></div>
+          <div><strong>{{ facts.precision|round|int }}%</strong><span>Precision</span></div>
+          <div><strong>{{ facts.recall|round|int }}%</strong><span>Recall</span></div>
+        </div>
+      </div>
+
+      <div class="card api">
+        <h3>Use it as an API</h3>
+        <p class="muted small">Send the {{ facts.inputs }} inputs as JSON with the dataset's column names.</p>
+        <pre><code>{{ presets[0]['values']|tojson(indent=2) }}</code></pre>
+        <p class="muted small"><code>POST /api/predict</code> returns <code>prediction</code>, <code>label</code>, <code>probability</code> and <code>warnings</code>. <code>GET /api/health</code> reports whether the model is loaded.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% endblock %}
